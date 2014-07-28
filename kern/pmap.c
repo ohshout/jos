@@ -98,6 +98,19 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
+	
+	/* --czq-- this function is only called during the
+	 * initialization stage when the identity mapping setup 
+	 * by boot.S is in effect. So we only have 0xf0000000 through 0xf0400000
+	 * mapped. */
+	result = ROUNDUP((char *) ((uint32_t) nextfree + n), PGSIZE);
+	if ((uint32_t) result >= 0xf0400000 && result < nextfree)
+		panic("out of memory in boot_alloc!");
+	else {
+		char *res = nextfree;
+		nextfree = result;
+		return (void *) res;
+	}
 
 	return NULL;
 }
@@ -121,7 +134,7 @@ mem_init(void)
 	i386_detect_memory();
 
 	// Remove this line when you're ready to test this function.
-	panic("mem_init: This function is not finished\n");
+	//panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -143,7 +156,8 @@ mem_init(void)
 	// each physical page, there is a corresponding struct PageInfo in this
 	// array.  'npages' is the number of physical pages in memory.
 	// Your code goes here:
-
+	pages = boot_alloc(npages * sizeof(struct PageInfo));
+	assert(pages != NULL);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -247,7 +261,24 @@ page_init(void)
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
 	size_t i;
+	uint32_t addr;
+	void *kern_end = boot_alloc(0);
 	for (i = 0; i < npages; i++) {
+		addr = i * PGSIZE;
+		/* --czq-- preserve physical page 0 */
+		if (addr == 0) {
+			pages[i].pp_ref = 2; /* --czq-- I think this should be 2 since
+														* it is mapped to both 0x00000000 and 0xf0000000 */
+			continue;
+		}
+		if (addr >= IOPHYSMEM && addr < EXTPHYSMEM) {
+			/* --czq-- IO hole */
+			continue;
+		}
+		if (addr >= EXTPHYSMEM && addr < PADDR(kern_end)) {
+			pages[i].pp_ref = 2; /* --czq-- the same reason as above */
+			continue;
+		}
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
