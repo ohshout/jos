@@ -371,7 +371,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 		phys_addr = page2pa(pginfo);
 		/* --czq-- insert an entry into page directory */
 		/* --czq-- as permissive as possible */
-		*pd = (phys_addr << PDXSHIFT) | PTE_SYSCALL;
+		*pd = PTE_ADDR(phys_addr) | PTE_SYSCALL;
 	}
 	uintptr_t virt_addr = KADDR(phys_addr);
 	return (pte_t *) virt_addr + PTX(va);
@@ -390,6 +390,14 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
+	size_t i;
+	uintptr_t virt_addr;
+	physaddr_t phys_addr;
+	pte_t *pte;
+	for (i = 0; i < size; i += PGSIZE) {
+		pte = pgdir_walk(pgdir, (void *) (va + i), true); 
+		*pte = PTE_ADDR(phys_addr + i) | perm | PTE_P;
+	}
 	// Fill this function in
 }
 
