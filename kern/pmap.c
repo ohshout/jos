@@ -267,8 +267,6 @@ page_init(void)
 		addr = i * PGSIZE;
 		/* --czq-- preserve physical page 0 */
 		if (addr == 0) {
-			pages[i].pp_ref = 2; /* --czq-- I think this should be 2 since
-														* it is mapped to both 0x00000000 and 0xf0000000 */
 			continue;
 		}
 		if (addr >= IOPHYSMEM && addr < EXTPHYSMEM) {
@@ -276,7 +274,7 @@ page_init(void)
 			continue;
 		}
 		if (addr >= EXTPHYSMEM && addr < PADDR(kern_end)) {
-			pages[i].pp_ref = 2; /* --czq-- the same reason as above */
+			/* --czq-- kernel */
 			continue;
 		}
 		pages[i].pp_ref = 0;
@@ -298,7 +296,13 @@ struct PageInfo *
 page_alloc(int alloc_flags)
 {
 	// Fill this function in
-	return 0;
+	if (!page_free_list)
+		return NULL;
+	struct PageInfo *pg_info = page_free_list;
+	page_free_list = pg_info->pp_link;
+	if (alloc_flags & ALLOC_ZERO)
+		memset(page2kva(pg_info), 0, PGSIZE);
+	return pg_info;
 }
 
 //
@@ -309,6 +313,9 @@ void
 page_free(struct PageInfo *pp)
 {
 	// Fill this function in
+	assert(pp->pp_ref == 0);
+	pp->pp_link = page_free_list;
+	page_free_list = pp;
 }
 
 //
@@ -348,7 +355,26 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+	physaddr_t phys_addr;
+	pdt_t *pd = pgdir + PDX(va);
+	if (*pd & PTE_P) {
+		/* --czq-- present */
+		phys_addr = PTE_ADDR(*pd);
+	} else {
+		/* --czq-- page table not exist */
+		if (create == false)
+			return NULL;
+		struct PageInfo *pginfo = page_alloc(ALLOC_ZERO);
+		if (pginfo == NULL)
+			return NULL;
+		pginfo->ref++;
+		phys_addr = page2pa(pginfo);
+		/* --czq-- insert an entry into page directory */
+		/* --czq-- as permissive as possible */
+		*pd = (phys_addr << PDXSHIFT) | PTE_SYSCALL;
+	}
+	uintptr_t virt_addr = KADDR(phys_addr);
+	return (pte_t *) virt_addr + PTX(va);
 }
 
 //
