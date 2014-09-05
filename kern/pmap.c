@@ -356,7 +356,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
 	physaddr_t phys_addr;
-	pdt_t *pd = pgdir + PDX(va);
+	pde_t *pd = pgdir + PDX(va);
 	if (*pd & PTE_P) {
 		/* --czq-- present */
 		phys_addr = PTE_ADDR(*pd);
@@ -367,13 +367,13 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 		struct PageInfo *pginfo = page_alloc(ALLOC_ZERO);
 		if (pginfo == NULL)
 			return NULL;
-		pginfo->ref++;
+		pginfo->pp_ref++;
 		phys_addr = page2pa(pginfo);
 		/* --czq-- insert an entry into page directory */
 		/* --czq-- as permissive as possible */
 		*pd = PTE_ADDR(phys_addr) | PTE_SYSCALL;
 	}
-	uintptr_t virt_addr = KADDR(phys_addr);
+	uintptr_t virt_addr = (uintptr_t)KADDR(phys_addr);
 	return (pte_t *) virt_addr + PTX(va);
 }
 
@@ -430,6 +430,19 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
+	/* --czq-- To handle corner-case. If the corner-case
+	 * happens and pp_ref is 1, then the page will be freed.
+	 * So increment pp_ref first to make sure it is at least 2 */
+	pp->pp_ref++;
+	/* --czq-- call page_remove() anyway */
+	page_remove(pgdir, va);
+	pte_t *pte = pgdir_walk(pgdir, va, true);
+	if (pte == NULL) {
+		/* --czq-- page table couldn't be allocated */
+		pp->pp_ref--;
+		return -E_NO_MEM;
+	}
+	*pte = PTE_ADDR(page2pa(pp)) | perm | PTE_P;
 	return 0;
 }
 
@@ -448,7 +461,13 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	pte_t *pte = pgdir_walk(pgdir, va, false);
+	if (pte_store != 0)
+		*pte_store = pte;
+	if (pte == NULL || !(*pte & PTE_P))
+		return NULL;
+	physaddr_t phys_addr = PTE_ADDR(*pte);
+	return pa2page(phys_addr);
 }
 
 //
@@ -470,6 +489,13 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	pte_t *pte;
+	struct PageInfo *pginfo = page_lookup(pgdir, va, &pte);
+	if (pginfo == NULL) return;
+	if (--pginfo->pp_ref == 0)
+		page_free(pginfo);
+	*pte = 0;
+	tlb_invalidate(pgdir, va);
 }
 
 //
