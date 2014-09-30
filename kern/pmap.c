@@ -229,7 +229,6 @@ mem_init(void)
 	// Your code goes here:
 	boot_map_region(kern_pgdir, KERNBASE, 0xFFFFFFFF - KERNBASE, 0, PTE_W | PTE_P);
 
-	assert(0);
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
 
@@ -396,7 +395,6 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 			return NULL;
 		pginfo->pp_ref++;
 		phys_addr = page2pa(pginfo);
-		cprintf("address is %d\n", phys_addr);
 		/* --czq-- insert an entry into page directory */
 		/* --czq-- as permissive as possible */
 		*pd = PTE_ADDR(phys_addr) | PTE_SYSCALL;

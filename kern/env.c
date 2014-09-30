@@ -187,7 +187,15 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
-	page_insert(kern_pgdir, p, page2kva(p), PTE_W);
+	
+	// --czq-- theoretically, page_alloc() could return a high memory page,
+	// which has not been mapped to kernel virtual address space
+	// so page_insert() is necessary
+	// BUT in JOS, all physical memory is actually low memory,
+	// which has already be mapped to page2kva()
+	// so page_insert() can be skipped
+	//page_insert(kern_pgdir, p, page2kva(p), PTE_W);
+	
 	// --czq-- copy the entire page directory of kern_pgdir
 	memcpy(page2kva(p), kern_pgdir, PGSIZE);
 	// --czq-- set all the entries below UTOP to 0
@@ -356,8 +364,6 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	// so we can move data directly into the virtual addresses
 	assert(e->env_pgdir != NULL);
 	lcr3(PADDR(e->env_pgdir));
-
-	page_alloc(ALLOC_ZERO);
 
 	struct Elf *elf_bin = (struct Elf *) binary;
 	if (elf_bin->e_magic != ELF_MAGIC)
