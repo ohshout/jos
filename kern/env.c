@@ -194,7 +194,7 @@ env_setup_vm(struct Env *e)
 	// BUT in JOS, all physical memory is actually low memory,
 	// which has already be mapped to page2kva()
 	// so page_insert() can be skipped
-	//page_insert(kern_pgdir, p, page2kva(p), PTE_W);
+	page_insert(kern_pgdir, p, page2kva(p), PTE_W);
 	
 	// --czq-- copy the entire page directory of kern_pgdir
 	memcpy(page2kva(p), kern_pgdir, PGSIZE);

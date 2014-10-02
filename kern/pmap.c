@@ -455,18 +455,35 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
-	/* --czq-- To handle corner-case. If the corner-case
-	 * happens and pp_ref is 1, then the page will be freed.
-	 * So increment pp_ref first to make sure it is at least 2 */
-	pp->pp_ref++;
-	/* --czq-- call page_remove() anyway */
-	page_remove(pgdir, va);
-	pte_t *pte = pgdir_walk(pgdir, va, true);
-	if (pte == NULL) {
-		/* --czq-- page table couldn't be allocated */
-		pp->pp_ref--;
-		return -E_NO_MEM;
+	pte_t *pte;
+	struct PageInfo *pg = page_lookup(pgdir, va, &pte);
+	if (pg) {
+		//a page is already mapped at va
+		if (pg == pp) {
+			//the mapped page is the page we want to insert
+			//just reset perm
+			*pte = PTE_ADDR(*pte) | perm | PTE_P;
+			return 0;
+		} else {
+			//remove the old mapped page
+			page_remove(pgdir, va);
+		}
+	} else {
+		//no page is mapped at 'va'
+		//but the page table might need to be created
+		if (pte == NULL) {
+			pte = pgdir_walk(pgdir, va, true);
+			if (pte == NULL) 
+					return -E_NO_MEM;
+		}
 	}
+
+	//when we reach here, all corner-case should have
+	//already been handled, which means now
+	//*pte is 0, pp is pointing to an allocated page
+	//now insert page to 'va'
+	assert(*pte == 0);
+	pp->pp_ref++;
 	*pte = PTE_ADDR(page2pa(pp)) | perm | PTE_P;
 	return 0;
 }
