@@ -41,15 +41,57 @@
 	pushl $(num);							\
 	jmp _alltraps
 
-.text
+#define TRAPHANDLER2(num) \
+	.text; \
+	TRAPHANDLER(vector##num, num); \
+	.data; \
+	.long vector##num
+
+#define TRAPHANDLER_NOEC2(num) \
+	.text; \
+	TRAPHANDLER_NOEC(vector##num, num); \
+	.data; \
+	.long vector##num
 
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+.data
+.globl vectors
+.align 4
 
+vectors:
+TRAPHANDLER_NOEC2(0);
+TRAPHANDLER_NOEC2(1);
+TRAPHANDLER_NOEC2(2);
+TRAPHANDLER_NOEC2(3);
+TRAPHANDLER_NOEC2(4);
+TRAPHANDLER_NOEC2(5);
+TRAPHANDLER_NOEC2(6);
+TRAPHANDLER_NOEC2(7);
+TRAPHANDLER2(8);
+TRAPHANDLER_NOEC2(9);
+TRAPHANDLER2(10);
+TRAPHANDLER2(11);
+TRAPHANDLER2(12);
+TRAPHANDLER2(13);
+TRAPHANDLER2(14);
+TRAPHANDLER_NOEC2(15);
+TRAPHANDLER_NOEC2(16);
+TRAPHANDLER2(17);
+TRAPHANDLER_NOEC2(18);
+TRAPHANDLER_NOEC2(19);
 
-
+.text
 /*
  * Lab 3: Your code here for _alltraps
  */
-
+_alltraps:
+	pushl %ds
+	pushl %es
+	movw $(GD_KD), %ax
+	movw %ax, %es
+	movw %ax, %ds
+	pushal
+	pushl %esp
+	call trap

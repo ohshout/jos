@@ -63,8 +63,20 @@ void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
+	extern uintptr_t vectors[T_DEFAULT];
 
 	// LAB 3: Your code here.
+	int i;
+	for (i = 0; i <= T_SIMDERR; i++)
+		/* --czq-- The comment of SETGATE
+		 * says sel is for code segment selector
+		 * The definition of selector is 
+		 * (offset from the beginning of the table) | (table indicator) | (privilege)
+		 * since table is gdt, which is 0; privilege is 0
+		 * so sel will be set as GD_KT
+		 */
+		/* XXX: don't know what istrap should be set to */
+		SETGATE(idt[i], 0, GD_KT, vectors[i], 0); 
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -164,6 +176,13 @@ trap(struct Trapframe *tf)
 	// Check that interrupts are disabled.  If this assertion
 	// fails, DO NOT be tempted to fix it by inserting a "cli" in
 	// the interrupt path.
+	
+	/* --czq-- this check will always succeed 
+	 * because interrupt has actually never 
+	 * been enabled (`sti' has never been exec'ed)
+	 * But the reason why it still can be trapped 
+	 * to reach is that those predefined exceptions/interrupts
+	 * are non-maskable */
 	assert(!(read_eflags() & FL_IF));
 
 	cprintf("Incoming TRAP frame at %p\n", tf);
