@@ -81,6 +81,11 @@ TRAPHANDLER_NOEC2(16);
 TRAPHANDLER2(17);
 TRAPHANDLER_NOEC2(18);
 TRAPHANDLER_NOEC2(19);
+.text
+TRAPHANDLER_NOEC(vector48, 48)
+.data
+.skip ((T_SYSCALL-T_SIMDERR-1)*4)
+.long vector48
 
 .text
 /*
@@ -89,9 +94,9 @@ TRAPHANDLER_NOEC2(19);
 _alltraps:
 	pushl %ds
 	pushl %es
+	pushal
 	movw $(GD_KD), %ax
 	movw %ax, %es
 	movw %ax, %ds
-	pushal
 	pushl %esp
 	call trap
