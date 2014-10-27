@@ -119,6 +119,14 @@ env_init(void)
 {
 	// Set up envs array
 	// LAB 3: Your code here.
+	int i;
+	envs[0].env_id = 0;
+	for (i = 1; i < NENV; i++) {
+		envs[i].env_id = 0;
+		envs[i-1].env_link = &envs[i];
+	}
+	envs[NENV-1].env_link = NULL;
+	env_free_list = &envs[0];
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -182,6 +190,21 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
+	
+	// --czq-- theoretically, page_alloc() could return a high memory page,
+	// which has not been mapped to kernel virtual address space
+	// so page_insert() is necessary
+	// BUT in JOS, all physical memory is actually low memory,
+	// which has already be mapped to page2kva()
+	// so page_insert() can be skipped
+	//page_insert(kern_pgdir, p, page2kva(p), PTE_W);
+	
+	// --czq-- copy the entire page directory of kern_pgdir
+	memcpy(page2kva(p), kern_pgdir, PGSIZE);
+	// --czq-- set all the entries below UTOP to 0
+	memset(page2kva(p), 0, sizeof(pde_t) * UTOP / PTSIZE);
+
+	e->env_pgdir = page2kva(p);
 
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
@@ -279,6 +302,17 @@ region_alloc(struct Env *e, void *va, size_t len)
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round (va + len) up.
 	//   (Watch out for corner-cases!)
+	assert(e->env_pgdir != NULL);
+	uintptr_t start = ROUNDDOWN((uintptr_t) va, PGSIZE),
+						end = ROUNDUP((uintptr_t) (va + len), PGSIZE), i;
+	struct PageInfo *pginfo;
+	for (i = start; i < end; i += PGSIZE) {
+		pginfo = page_alloc(ALLOC_ZERO);
+		if (pginfo == NULL)
+			panic("run out of memory");
+		if (page_insert(e->env_pgdir, pginfo, (void *) i, PTE_U | PTE_W))
+			panic("failed to insert page");
+	} 
 }
 
 //
@@ -336,10 +370,33 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 
 	// LAB 3: Your code here.
 
+	if (e == NULL)
+		panic("bad environment descriptor");
+	// --czq-- switch to env e's page directory
+	// so we can move data directly into the virtual addresses
+	assert(e->env_pgdir != NULL);
+	lcr3(PADDR(e->env_pgdir));
+
+	struct Elf *elf_bin = (struct Elf *) binary;
+	if (elf_bin->e_magic != ELF_MAGIC)
+		panic("corrupted ELF");
+
+	struct Proghdr *ph = 
+		(struct Proghdr *) (binary + elf_bin->e_phoff);
+	struct Proghdr *eph = ph + elf_bin->e_phnum;
+	for (; ph < eph; ph++) {
+		if (ph->p_type == ELF_PROG_LOAD) {
+			region_alloc(e, (void *) ph->p_va, ph->p_memsz);
+			memcpy((void *) ph->p_va, binary + ph->p_offset, ph->p_filesz); 
+		}
+	}
+	e->env_tf.tf_eip = elf_bin->e_entry;
+
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+	region_alloc(e, (void *) (USTACKTOP - PGSIZE), PGSIZE);
 }
 
 //
@@ -353,6 +410,14 @@ void
 env_create(uint8_t *binary, size_t size, enum EnvType type)
 {
 	// LAB 3: Your code here.
+	struct Env *e;
+	int ret = env_alloc(&e, 0);
+	if (ret == -E_NO_FREE_ENV)
+		panic("run out of environment descriptor");
+	else if (ret == -E_NO_MEM)
+		panic("run out of memory");
+	load_icode(e, binary, size);
+	e->env_type = type;
 }
 
 //
@@ -482,7 +547,15 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
-
-	panic("env_run not yet implemented");
+	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
+		curenv->env_status = ENV_RUNNABLE;
+	curenv = e;
+	curenv->env_status = ENV_RUNNING;
+	curenv->env_runs++;
+	lcr3(PADDR(curenv->env_pgdir));
+	// Q: when and where is the last env's state saved?
+	// A: in trap(), the trap frame on kernel stack is
+	// stored into curenv->env_tf
+pop_tf:
+	env_pop_tf(&e->env_tf);
 }
-

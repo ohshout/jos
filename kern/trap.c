@@ -70,8 +70,22 @@ void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
+	extern uintptr_t vectors[T_DEFAULT];
 
 	// LAB 3: Your code here.
+	int i;
+	for (i = 0; i <= T_SIMDERR; i++)
+		/* --czq-- The comment of SETGATE
+		 * says sel is for code segment selector
+		 * The definition of selector is 
+		 * (offset from the beginning of the table) | (table indicator) | (privilege)
+		 * since table is gdt, which is 0; privilege is 0
+		 * so sel will be set as GD_KT
+		 */
+		/* XXX: don't know what istrap should be set to */
+		SETGATE(idt[i], 0, GD_KT, vectors[i], 0); 
+	SETGATE(idt[T_BRKPT], 0, GD_KT, vectors[T_BRKPT], 3); 
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, vectors[T_SYSCALL], 3); 
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -189,6 +203,23 @@ trap_dispatch(struct Trapframe *tf)
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
+
+	if (tf->tf_trapno == T_PGFLT)
+		return page_fault_handler(tf);
+	else if (tf->tf_trapno == T_BRKPT)
+		monitor(tf);
+	else if(tf->tf_trapno == T_SYSCALL) {
+		tf->tf_regs.reg_eax =
+			syscall(tf->tf_regs.reg_eax,
+				tf->tf_regs.reg_edx,
+				tf->tf_regs.reg_ecx,
+				tf->tf_regs.reg_ebx,
+				tf->tf_regs.reg_edi,
+				tf->tf_regs.reg_esi
+			);
+		return;
+	}
+
 	if (tf->tf_cs == GD_KT)
 		panic("unhandled trap in kernel");
 	else {
@@ -216,6 +247,13 @@ trap(struct Trapframe *tf)
 	// Check that interrupts are disabled.  If this assertion
 	// fails, DO NOT be tempted to fix it by inserting a "cli" in
 	// the interrupt path.
+	
+	/* --czq-- this check will always succeed 
+	 * because interrupt has actually never 
+	 * been enabled (`sti' has never been exec'ed)
+	 * But the reason why it still can be trapped 
+	 * to reach is that those predefined exceptions/interrupts
+	 * are non-maskable */
 	assert(!(read_eflags() & FL_IF));
 
 	if ((tf->tf_cs & 3) == 3) {
@@ -266,6 +304,8 @@ page_fault_handler(struct Trapframe *tf)
 	fault_va = rcr2();
 
 	// Handle kernel-mode page faults.
+	if (tf->tf_cs == GD_KT)
+		panic("page fault in kernel mode");
 
 	// LAB 3: Your code here.
 
@@ -302,10 +342,11 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 
+	
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
 		curenv->env_id, fault_va, tf->tf_eip);
-	print_trapframe(tf);
+	//print_trapframe(tf);
 	env_destroy(curenv);
 }
 
